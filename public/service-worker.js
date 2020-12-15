@@ -20,45 +20,67 @@ const FILES_TO_CACHE = [
 
 self.addEventListener('install', function (e) {
    e.waitUntil(
-       caches.open(CACHE_NAME).then(function (cache) {
-           console.log('installing cache: ' + CACHE_NAME)
-           return cache.addAll(FILES_TO_CACHE)
-       })
-   )
-})
-self.addEventListener('activate', function (e) {
-   e.waitUntil(
-      caches.keys().then(function (keyList) {
-         let cacheKeeplist = keyList.filter(function (key) {
-            return key.indexOf(APP_PREFIX);
-         });
-         cacheKeeplist.push(CACHE_NAME);
-
-         return Promise.all(
-            keyList.map(function (key, i) {
-               if (cacheKeeplist.indexOf(key) === -1) {
-                  console.log('deleting cache : ' + keyList[i]);
-                  return caches.delete(keyList[i]);
-               }
-            })
-         );
-      })
+     caches.open(CACHE_NAME).then(cache => {
+       console.log('Your files were pre-cached successfully!');
+       return cache.addAll(FILES_TO_CACHE)
+     })
    );
-});
-
-
-self.addEventListener('fetch', function (e) {
-   console.log('fetch request: ' + e.request.url)
+ 
+   self.skipWaiting();
+ });
+ //
+ 
+ self.addEventListener('activate', function (e) {
+   e.waitUntil(
+     caches.keys().then(keyList => {
+       return Promise.all(
+         keyList.map(key => {
+           if (key !== CACHE_NAME && key !== DATA_CACHE_NAME) {
+             console.log('Removing old cache data', key);
+             return caches.delete(key);
+           }
+         })
+       );
+     })
+   );
+ 
+   self.clients.claim();
+ });
+ //
+ 
+ self.addEventListener('fetch', function (e) {
+   if (e.request.url.includes('/api/')) {
+     e.respondWith(
+       caches
+         .open(DATA_CACHE_NAME)
+         .then(cache => {
+           return fetch(e.request)
+             .then(response => {
+               if (response.status === 200) {
+                 cache.put(e.request.url, response.clone());
+               }
+ 
+               return response;
+             })
+             .catch(err => {
+               return cache.match(e.request);
+             });
+         })
+         .catch(err => console.log(err))
+     );
+ 
+     return;
+   }
+ 
    e.respondWith(
-       caches.match(e.request).then(function (request) {
-           if (request) {
-               console.log('responding with cache : ' + e.request.url)
-               return request
-           }
-           else{
-               console.log('file is not cached, fetching : ' + e.request.url)
-               return fetch(e.request)
-           }
-       })
-   )
-})
+     fetch(e.request).catch(function () {
+       return caches.match(e.request).then(function (response) {
+         if (response) {
+           return response;
+         } else if (e.request.headers.get('accept').includes('text/html')) {
+           return caches.match('/');
+         }
+       });
+     })
+   );
+ });
