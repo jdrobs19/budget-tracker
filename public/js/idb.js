@@ -1,16 +1,16 @@
 let db;
 
-const request = indexedDB.open('budget', 1);
-
+const request = indexedDB.open('budget-tracker', 1);
 request.onupgradeneeded = function (event) {
     const db = event.target.result;
-    db.createObjectStore('new_record', { autoIncrement: true });
+    db.createObjectStore('new_item', { autoIncrement: true });
 };
 
 request.onsuccess = function (event) {
     db = event.target.result;
-
-    if (navigator.onLine) uploadRecord();
+    if (navigator.onLine) {
+        uploadItem();
+    }
 };
 
 request.onerror = function (event) {
@@ -18,21 +18,18 @@ request.onerror = function (event) {
 };
 
 function saveRecord(record) {
-    const transaction = db.transaction(['new_record'], 'readwrite');
-    const recordObjectStore = transaction.objectStore('new_record');
-
-    recordObjectStore.add(record);
-    console.log(record + 'is saving');
+    const transaction = db.transaction(['new_item'], 'readwrite');
+    const itemObjectStore = transaction.objectStore('new_item');
+    itemObjectStore.add(record);
 };
 
-function uploadRecord() {
-    const transaction = db.transaction(['new_record'], 'readwrite');
-    const recordObjectStore = transaction.objectStore('new_record');
-
-    const getAll = recordObjectStore.getAll();
+function uploadItem() {
+    const transaction = db.transaction(['new_item'], 'readwrite');
+    const itemObjectStore = transaction.objectStore('new_item');
+    const getAll = itemObjectStore.getAll();
 
     getAll.onsuccess = function () {
-        if (getAll.result.length === 1) {
+        if (getAll.result.length > 0) {
             fetch('/api/transaction', {
                 method: 'POST',
                 body: JSON.stringify(getAll.result),
@@ -43,38 +40,19 @@ function uploadRecord() {
             })
                 .then(response => response.json())
                 .then(serverResponse => {
-                    if (serverResponse.message) throw new Error(serverResponse);
-
-                    const transaction = db.transaction(['new_record'], 'readwrite');
-                    const recordObjectStore = transaction.objectStore('new_record');
-                    recordObjectStore.clear();
-
-                    alert("You are now online. Data was updated.");
+                    if (serverResponse.message) {
+                        throw new Error(serverResponse);
+                    }
+                    const transaction = db.transaction(['new_item'], 'readwrite');
+                    const itemObjectStore = transaction.objectStore('new_item');
+                    itemObjectStore.clear();
+                    alert('All saved items have been submitted');
                 })
-                .catch(err => console.log(err));
+                .catch(err => {
+                    console.log(err);
+                });
         }
-        else if (getAll.result.length > 1) {
-            fetch('/api/transaction/bulk', {
-                method: 'POST',
-                body: JSON.stringify(getAll.result),
-                headers: {
-                    Accept: 'application/json, text/plain, */*',
-                    'Content-Type': 'application/json'
-                }
-            })
-                .then(response => response.json())
-                .then(serverResponse => {
-                    if (serverResponse.message) throw new Error(serverResponse);
-
-                    const transaction = db.transaction(['new_record'], 'readwrite');
-                    const recordObjectStore = transaction.objectStore('new_record');
-                    recordObjectStore.clear();
-
-                    alert("You are now online. Data was updated.");
-                })
-                .catch(err => console.log(err));
-        }
-    }
+    };
 };
 
-window.addEventListener('online', uploadRecord);
+window.addEventListener('online', uploadItem);
